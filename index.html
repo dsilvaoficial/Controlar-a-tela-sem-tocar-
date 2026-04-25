@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TikTok Gesture</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+<style>
+body {
+  margin: 0;
+  overflow: hidden;
+  background: black;
+  font-family: Arial;
+}
+
+.feed {
+  height: 100vh;
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+}
+
+.video-container {
+  height: 100vh;
+  position: relative;
+  scroll-snap-align: start;
+}
+
+video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ui {
+  position: absolute;
+  bottom: 80px;
+  right: 15px;
+  color: white;
+  font-size: 22px;
+}
+
+.like {
+  margin-bottom: 20px;
+  cursor: pointer;
+}
+
+.camera-box {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  width: 120px;
+  border: 2px solid white;
+  border-radius: 10px;
+  overflow: hidden;
+  z-index: 999;
+}
+
+.status {
+  position: fixed;
+  bottom: 20px;
+  width: 100%;
+  text-align: center;
+  color: white;
+  font-size: 20px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="feed" id="feed">
+
+  <div class="video-container">
+    <video src="https://www.w3schools.com/html/mov_bbb.mp4" autoplay loop muted></video>
+    <div class="ui">
+      <div class="like">🤍</div>
+    </div>
+  </div>
+
+  <div class="video-container">
+    <video src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4" autoplay loop muted></video>
+    <div class="ui">
+      <div class="like">🤍</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="camera-box">
+  <video id="cam" autoplay playsinline></video>
+</div>
+
+<div class="status" id="status">-</div>
+
+<script>
+const feed = document.getElementById("feed");
+const statusText = document.getElementById("status");
+const videos = document.querySelectorAll("video");
+
+let currentIndex = 0;
+let lastAction = "";
+
+// 👉 controle de vídeos
+function playCurrent() {
+  videos.forEach((v, i) => {
+    if (i === currentIndex) v.play();
+    else v.pause();
+  });
+}
+
+// 👉 próximo vídeo
+function nextVideo() {
+  currentIndex = Math.min(currentIndex + 1, videos.length - 1);
+  feed.scrollTo({ top: currentIndex * window.innerHeight, behavior: "smooth" });
+  playCurrent();
+}
+
+// 👉 vídeo anterior
+function prevVideo() {
+  currentIndex = Math.max(currentIndex - 1, 0);
+  feed.scrollTo({ top: currentIndex * window.innerHeight, behavior: "smooth" });
+  playCurrent();
+}
+
+// 👉 like
+function likeVideo() {
+  const like = document.querySelectorAll(".like")[currentIndex];
+  like.innerHTML = "❤️";
+}
+
+// 👉 detectar dedo levantado
+function isUp(tip, pip) {
+  return tip.y < pip.y;
+}
+
+// 🔥 MediaPipe
+const hands = new Hands({
+  locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${file}`
+});
+
+hands.setOptions({
+  maxNumHands: 1,
+  modelComplexity: 0,
+  minDetectionConfidence: 0.6,
+  minTrackingConfidence: 0.6
+});
+
+hands.onResults(results => {
+  if (!results.multiHandLandmarks) {
+    statusText.innerHTML = "❌";
+    return;
+  }
+
+  const h = results.multiHandLandmarks[0];
+
+  const thumb = isUp(h[4], h[3]);
+  const index = isUp(h[8], h[6]);
+  const middle = isUp(h[12], h[10]);
+  const ring = isUp(h[16], h[14]);
+  const pinky = isUp(h[20], h[18]);
+
+  // 👍 like
+  if (thumb && !index && !middle && !ring && !pinky) {
+    if (lastAction !== "like") {
+      likeVideo();
+      statusText.innerHTML = "👍 Like";
+      lastAction = "like";
+    }
+  }
+
+  // ✊ pause/play
+  else if (!thumb && !index && !middle && !ring && !pinky) {
+    if (lastAction !== "pause") {
+      const v = videos[currentIndex];
+      if (v.paused) {
+        v.play();
+        statusText.innerHTML = "▶️ Play";
+      } else {
+        v.pause();
+        statusText.innerHTML = "⏸️ Pause";
+      }
+      lastAction = "pause";
+    }
+  }
+
+  // ✌️ próximo
+  else if (index && middle && !ring && !pinky) {
+    if (lastAction !== "next") {
+      nextVideo();
+      statusText.innerHTML = "⏭️ Próximo";
+      lastAction = "next";
+    }
+  }
+
+  // ☝️ anterior
+  else if (index && !middle && !ring && !pinky) {
+    if (lastAction !== "prev") {
+      prevVideo();
+      statusText.innerHTML = "⏮️ Anterior";
+      lastAction = "prev";
+    }
+  }
+
+  else {
+    lastAction = "";
+    statusText.innerHTML = "✋";
+  }
+});
+
+// câmera
+const cam = new Camera(document.getElementById("cam"), {
+  onFrame: async () => {
+    await hands.send({ image: cam.video });
+  },
+  width: 320,
+  height: 240
+});
+
+cam.start();
+
+// autoplay inicial
+playCurrent();
+</script>
+
+</body>
+  </html>
