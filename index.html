@@ -3,68 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TikTok Gesture PRO</title>
+<title>TikTok Gesture PRO+</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
 <style>
-body {
-  margin: 0;
-  overflow: hidden;
-  background: black;
-  font-family: Arial;
-}
-
-.feed {
-  height: 100vh;
-  overflow-y: scroll;
-  scroll-snap-type: y mandatory;
-}
-
-.video-container {
-  height: 100vh;
-  position: relative;
-  scroll-snap-align: start;
-}
-
-video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.ui {
-  position: absolute;
-  bottom: 80px;
-  right: 15px;
-  color: white;
-  font-size: 24px;
-}
-
-.like {
-  margin-bottom: 20px;
-}
-
-.camera-box {
-  position: fixed;
-  top: 10px;
-  right: 10px;
-  width: 120px;
-  border: 2px solid white;
-  border-radius: 10px;
-  overflow: hidden;
-  z-index: 999;
-}
-
-.status {
-  position: fixed;
-  bottom: 20px;
-  width: 100%;
-  text-align: center;
-  color: white;
-  font-size: 20px;
-}
+body { margin:0; overflow:hidden; background:black; }
+.feed { height:100vh; overflow-y:scroll; scroll-snap-type:y mandatory; }
+.video-container { height:100vh; scroll-snap-align:start; position:relative; }
+video { width:100%; height:100%; object-fit:cover; }
+.ui { position:absolute; bottom:80px; right:15px; color:white; font-size:24px; }
+.camera-box { position:fixed; top:10px; right:10px; width:120px; border:2px solid white; border-radius:10px; overflow:hidden; }
+.status { position:fixed; bottom:20px; width:100%; text-align:center; color:white; font-size:20px; }
 </style>
 </head>
 
@@ -93,147 +44,135 @@ video {
 <script>
 const feed = document.getElementById("feed");
 const statusText = document.getElementById("status");
-const videos = document.querySelectorAll(".video-container video");
+const videos = document.querySelectorAll("video");
 
 let currentIndex = 0;
 
-// 👉 controle de reprodução
-function playCurrent() {
-  videos.forEach((v, i) => {
-    if (i === currentIndex) v.play();
-    else v.pause();
-  });
-}
+// 🎥 controle vídeo
+function playCurrent(){ videos.forEach((v,i)=> i===currentIndex?v.play():v.pause()); }
+function nextVideo(){ currentIndex=Math.min(currentIndex+1,videos.length-1); feed.scrollTo({top:currentIndex*innerHeight,behavior:"smooth"}); playCurrent(); }
+function prevVideo(){ currentIndex=Math.max(currentIndex-1,0); feed.scrollTo({top:currentIndex*innerHeight,behavior:"smooth"}); playCurrent(); }
+function likeVideo(){ document.querySelectorAll(".like")[currentIndex].innerHTML="❤️"; }
 
-// 👉 próximo vídeo
-function nextVideo() {
-  currentIndex = Math.min(currentIndex + 1, videos.length - 1);
-  feed.scrollTo({ top: currentIndex * window.innerHeight, behavior: "smooth" });
-  playCurrent();
-}
+// 👉 detectar dedo
+const up = (tip,pip)=> tip.y < pip.y;
 
-// 👉 vídeo anterior
-function prevVideo() {
-  currentIndex = Math.max(currentIndex - 1, 0);
-  feed.scrollTo({ top: currentIndex * window.innerHeight, behavior: "smooth" });
-  playCurrent();
-}
+// 🔥 NOVA DETECÇÃO
+function detectGesture(h){
 
-// 👉 like
-function likeVideo() {
-  const like = document.querySelectorAll(".like")[currentIndex];
-  like.innerHTML = "❤️";
-}
+  const thumb = h[4].x < h[3].x; // polegar lateral
+  const index = up(h[8],h[6]);
+  const middle = up(h[12],h[10]);
+  const ring = up(h[16],h[14]);
+  const pinky = up(h[20],h[18]);
 
-// 🔥 DETECÇÃO MELHORADA
-function isUp(tip, pip) {
-  return tip.y < pip.y;
-}
+  // ✊
+  if(!index && !middle && !ring && !pinky) return "pause";
 
-function detectGesture(h) {
-  const index = isUp(h[8], h[6]);
-  const middle = isUp(h[12], h[10]);
-  const ring = isUp(h[16], h[14]);
-  const pinky = isUp(h[20], h[18]);
+  // 👍
+  if(thumb && !index && !middle && !ring && !pinky) return "play";
 
-  if (!index && !middle && !ring && !pinky) return "fist";   // ✊
-  if (index && middle && !ring && !pinky) return "peace";    // ✌️
-  if (index && !middle && !ring && !pinky) return "one";     // ☝️
-  if (index && middle && ring && pinky) return "open";       // ✋
+  // ✌️
+  if(index && middle && !ring && !pinky) return "next";
+
+  // ☝️
+  if(index && !middle && !ring && !pinky) return "prev";
+
+  // 🤟 (3 dedos)
+  if(index && middle && ring && !pinky) return "like";
+
+  // ✋
+  if(index && middle && ring && pinky) return "neutral";
 
   return "unknown";
 }
 
-// 🔥 CONTROLE DE ESTABILIDADE
-let lastGesture = "";
-let gestureStart = 0;
-const HOLD_TIME = 400; // tempo para validar gesto
-const COOLDOWN = 800;  // tempo entre ações
+// 🔥 estabilidade
+let lastGesture="";
+let gestureStart=0;
+let lastActionTime=0;
 
-let lastActionTime = 0;
+const HOLD=400;
+const COOLDOWN=900;
 
-const hands = new Hands({
-  locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${file}`
+const hands=new Hands({
+  locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${file}`
 });
 
 hands.setOptions({
-  maxNumHands: 1,
-  modelComplexity: 0,
-  minDetectionConfidence: 0.6,
-  minTrackingConfidence: 0.6
+  maxNumHands:1,
+  modelComplexity:0,
+  minDetectionConfidence:0.6,
+  minTrackingConfidence:0.6
 });
 
-hands.onResults(results => {
-  if (!results.multiHandLandmarks) {
-    statusText.innerHTML = "❌ Sem mão";
-    lastGesture = "";
+hands.onResults(results=>{
+
+  if(!results.multiHandLandmarks){
+    statusText.innerHTML="❌ Sem mão";
+    lastGesture="";
     return;
   }
 
-  const now = Date.now();
-  const hand = results.multiHandLandmarks[0];
-  const gesture = detectGesture(hand);
+  const now=Date.now();
+  const g=detectGesture(results.multiHandLandmarks[0]);
 
-  // 👉 estabilidade do gesto
-  if (gesture !== lastGesture) {
-    lastGesture = gesture;
-    gestureStart = now;
+  if(g!==lastGesture){
+    lastGesture=g;
+    gestureStart=now;
     return;
   }
 
-  // 👉 precisa segurar o gesto
-  if (now - gestureStart < HOLD_TIME) return;
+  if(now-gestureStart < HOLD) return;
+  if(now-lastActionTime < COOLDOWN) return;
 
-  // 👉 cooldown
-  if (now - lastActionTime < COOLDOWN) return;
+  lastActionTime=now;
 
-  lastActionTime = now;
+  switch(g){
 
-  switch (gesture) {
-
-    case "fist":
-      const v = videos[currentIndex];
-      if (v.paused) {
-        v.play();
-        statusText.innerHTML = "▶️ Play";
-      } else {
-        v.pause();
-        statusText.innerHTML = "⏸️ Pause";
-      }
+    case "pause":
+      videos[currentIndex].pause();
+      statusText.innerHTML="⏸️ Pause";
       break;
 
-    case "peace":
+    case "play":
+      videos[currentIndex].play();
+      statusText.innerHTML="▶️ Play";
+      break;
+
+    case "next":
       nextVideo();
-      statusText.innerHTML = "⏭️ Próximo";
+      statusText.innerHTML="⏭️ Próximo";
       break;
 
-    case "one":
+    case "prev":
       prevVideo();
-      statusText.innerHTML = "⏮️ Anterior";
+      statusText.innerHTML="⏮️ Anterior";
       break;
 
-    case "open":
+    case "like":
       likeVideo();
-      statusText.innerHTML = "❤️ Like";
+      statusText.innerHTML="❤️ Like";
+      break;
+
+    case "neutral":
+      statusText.innerHTML="✋ Neutro";
       break;
 
     default:
-      statusText.innerHTML = "🤔...";
+      statusText.innerHTML="🤔...";
   }
+
 });
 
 // câmera
-const cam = new Camera(document.getElementById("cam"), {
-  onFrame: async () => {
-    await hands.send({ image: cam.video });
-  },
-  width: 320,
-  height: 240
+const cam=new Camera(document.getElementById("cam"),{
+  onFrame:async()=>{ await hands.send({image:cam.video}); },
+  width:320,
+  height:240
 });
 
 cam.start();
-
-// autoplay inicial
 playCurrent();
 </script>
 
