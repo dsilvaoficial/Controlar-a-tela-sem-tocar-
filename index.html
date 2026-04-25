@@ -100,80 +100,56 @@ const feed = document.getElementById("feed");
 const statusText = document.getElementById("status");
 const videos = document.querySelectorAll("video");
 
-let currentIndex = 0;
-let lastAction = "";
+let lastGesture = "";
+let gestureTime = 0;
+const DELAY = 800; // tempo entre ações
 
-// 👉 controle de vídeos
-function playCurrent() {
-  videos.forEach((v, i) => {
-    if (i === currentIndex) v.play();
-    else v.pause();
-  });
+function detectGesture(h) {
+  const up = (tip, pip) => tip.y < pip.y;
+
+  const index = up(h[8], h[6]);
+  const middle = up(h[12], h[10]);
+  const ring = up(h[16], h[14]);
+  const pinky = up(h[20], h[18]);
+
+  // ✊ fechado
+  if (!index && !middle && !ring && !pinky) return "fist";
+
+  // ✌️ dois dedos
+  if (index && middle && !ring && !pinky) return "peace";
+
+  // ☝️ um dedo
+  if (index && !middle && !ring && !pinky) return "one";
+
+  // 🖐️ aberto
+  if (index && middle && ring && pinky) return "open";
+
+  return "unknown";
 }
-
-// 👉 próximo vídeo
-function nextVideo() {
-  currentIndex = Math.min(currentIndex + 1, videos.length - 1);
-  feed.scrollTo({ top: currentIndex * window.innerHeight, behavior: "smooth" });
-  playCurrent();
-}
-
-// 👉 vídeo anterior
-function prevVideo() {
-  currentIndex = Math.max(currentIndex - 1, 0);
-  feed.scrollTo({ top: currentIndex * window.innerHeight, behavior: "smooth" });
-  playCurrent();
-}
-
-// 👉 like
-function likeVideo() {
-  const like = document.querySelectorAll(".like")[currentIndex];
-  like.innerHTML = "❤️";
-}
-
-// 👉 detectar dedo levantado
-function isUp(tip, pip) {
-  return tip.y < pip.y;
-}
-
-// 🔥 MediaPipe
-const hands = new Hands({
-  locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${file}`
-});
-
-hands.setOptions({
-  maxNumHands: 1,
-  modelComplexity: 0,
-  minDetectionConfidence: 0.6,
-  minTrackingConfidence: 0.6
-});
 
 hands.onResults(results => {
   if (!results.multiHandLandmarks) {
-    statusText.innerHTML = "❌";
+    statusText.innerHTML = "❌ sem mão";
+    lastGesture = "";
     return;
   }
 
-  const h = results.multiHandLandmarks[0];
+  const now = Date.now();
+  const hand = results.multiHandLandmarks[0];
 
-  const thumb = isUp(h[4], h[3]);
-  const index = isUp(h[8], h[6]);
-  const middle = isUp(h[12], h[10]);
-  const ring = isUp(h[16], h[14]);
-  const pinky = isUp(h[20], h[18]);
+  const gesture = detectGesture(hand);
 
-  // 👍 like
-  if (thumb && !index && !middle && !ring && !pinky) {
-    if (lastAction !== "like") {
-      likeVideo();
-      statusText.innerHTML = "👍 Like";
-      lastAction = "like";
-    }
+  // ⛔ evita repetir ação rápido
+  if (gesture === lastGesture && now - gestureTime < DELAY) {
+    return;
   }
 
-  // ✊ pause/play
-  else if (!thumb && !index && !middle && !ring && !pinky) {
-    if (lastAction !== "pause") {
+  gestureTime = now;
+  lastGesture = gesture;
+
+  switch (gesture) {
+
+    case "fist":
       const v = videos[currentIndex];
       if (v.paused) {
         v.play();
@@ -182,31 +158,24 @@ hands.onResults(results => {
         v.pause();
         statusText.innerHTML = "⏸️ Pause";
       }
-      lastAction = "pause";
-    }
-  }
+      break;
 
-  // ✌️ próximo
-  else if (index && middle && !ring && !pinky) {
-    if (lastAction !== "next") {
+    case "peace":
       nextVideo();
       statusText.innerHTML = "⏭️ Próximo";
-      lastAction = "next";
-    }
-  }
+      break;
 
-  // ☝️ anterior
-  else if (index && !middle && !ring && !pinky) {
-    if (lastAction !== "prev") {
+    case "one":
       prevVideo();
       statusText.innerHTML = "⏮️ Anterior";
-      lastAction = "prev";
-    }
-  }
+      break;
 
-  else {
-    lastAction = "";
-    statusText.innerHTML = "✋";
+    case "open":
+      statusText.innerHTML = "✋ neutro";
+      break;
+
+    default:
+      statusText.innerHTML = "🤔...";
   }
 });
 
